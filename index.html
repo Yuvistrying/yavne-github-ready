@@ -1,0 +1,1985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yavne - Gym Escape</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.play/3.0.7/p5play.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #111;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    // Game states
+    const MAIN_MENU = 0;
+    const GAMEPLAY = 1;
+    const GAME_OVER = 2;
+    const VICTORY = 3;
+    
+    // Game variables
+    let gameState = MAIN_MENU;
+    let trainer;
+    let husbands = [];
+    let plates = [];
+    let thrownPlates = [];
+    let key;
+    let door;
+    let keyHolder;
+    let message = "";
+    let messageTimer = 0;
+    let isInvulnerable = false;
+    let invulnerabilityTimer = 0;
+    let gymEquipment = [];
+    let showHelp = false;
+    let gameStartTime = 0;
+    let currentScore = 0;
+    let highScore = 0;
+    let powerups = [];
+    let securityCameras = [];
+    let cameraRotation = 0;
+    let proteinBars = [];
+    let cameraFlash = 0;
+    let cameraFlashTimer = 0;
+    let cameraFlashCooldown = 0;  // New cooldown variable
+    let gameDescription = "Escape the gym by finding the key and reaching the exit door. Avoid or eliminate the jealous husbands!";
+    let gameObjectives = ["Find the key", "Reach the exit door", "Survive the husbands"];
+    let husbandKillCount = 0;  // Track how many husbands were killed
+    let timeMultiplier = 1.0;  // Starting multiplier for time-based scoring
+    
+    function setup() {
+      createCanvas(800, 600);
+      resetGame();
+    }
+    
+    function resetGame() {
+      // Create trainer (player)
+      trainer = {
+        x: 100,
+        y: 300,
+        width: 40,
+        height: 40,
+        speed: 5,
+        plates: 15,
+        lives: 5,
+        hasKey: false,
+        lastDirection: { x: 1, y: 0 }
+      };
+      
+      // Reset score and start time
+      gameStartTime = millis();
+      currentScore = 0;
+      husbandKillCount = 0;
+      timeMultiplier = 1.0;
+      
+      // Create husbands (enemies) - MAKE THEM EVEN MORE AGGRESSIVE
+      husbands = [];
+      for (let i = 0; i < 5; i++) {
+        husbands.push({
+          x: random(width - 100) + 50,
+          y: random(height - 150) + 50,
+          width: 40,
+          height: 40,
+          speed: 0.8 + random(0.5),         // Further increased base speed
+          chargeSpeed: 2.0 + random(0.8),   // Further increased charge speed
+          color: color(random(100, 150), random(100, 150), random(200, 255)),
+          hasKey: false,
+          alive: true,
+          health: 5,  // Increased from 3 to 5 health points
+          mustache: random() > 0.5,
+          bald: random() > 0.5,
+          wanderTimer: random(20, 60),     // Even shorter wander time
+          wanderDirection: p5.Vector.random2D(),
+          state: "wander",
+          visionRange: 350 + random(150),   // Increased vision range even more
+          chargeTimer: 0,
+          stunTimer: 0,
+          lastCameraAlert: 0,              // Track when last alerted by camera
+          intelligence: random(0.05, 0.12)  // Increased intelligence
+        });
+      }
+      
+      // Assign the key to a random husband
+      keyHolder = floor(random(husbands.length));
+      husbands[keyHolder].hasKey = true;
+      
+      // Create plates (ammo) around the gym
+      plates = [];
+      for (let i = 0; i < 12; i++) {
+        plates.push({
+          x: random(width - 100) + 50,
+          y: random(height - 150) + 50,
+          width: 20,
+          height: 20,
+          collected: false
+        });
+      }
+      
+      // Create thrown plates array
+      thrownPlates = [];
+      
+      // Create key (initially invisible)
+      key = {
+        x: 0,
+        y: 0,
+        width: 25,
+        height: 25,
+        visible: false,
+        collected: false
+      };
+      
+      // Create door (escape point)
+      door = {
+        x: width - 60,
+        y: height / 2 - 50,
+        width: 30,
+        height: 100
+      };
+      
+      // Create gym equipment - more spread out layout
+      gymEquipment = [
+        // Left side equipment
+        { type: "rack", x: 80, y: 80, width: 100, height: 40 },
+        { type: "bench", x: 80, y: 180, width: 120, height: 30 },
+        { type: "weights", x: 100, y: 250, width: 40, height: 40 },
+        
+        // Top corridor
+        { type: "treadmill", x: 250, y: 80, width: 120, height: 60 },
+        { type: "benchPress", x: 450, y: 80, width: 140, height: 50 },
+        
+        // Middle section
+        { type: "mirror", x: 250, y: 200, width: 200, height: 10 },
+        { type: "rack", x: 550, y: 200, width: 100, height: 40 },
+        
+        // Bottom section
+        { type: "yogaMat", x: 150, y: 400, width: 60, height: 120 },
+        { type: "treadmill", x: 300, y: 450, width: 120, height: 60 },
+        { type: "weights", x: 450, y: 450, width: 40, height: 40 },
+        
+        // Additional equipment - more spread out
+        { type: "rack", x: 350, y: 300, width: 100, height: 40 },
+        { type: "bench", x: 200, y: 320, width: 120, height: 30 },
+        { type: "waterCooler", x: 600, y: 350, width: 30, height: 60 },
+        
+        // Add some dumbbells around
+        { type: "dumbbells", x: 500, y: 120, width: 80, height: 20 },
+        { type: "dumbbells", x: 150, y: 120, width: 80, height: 20 }
+      ];
+      
+      // Create powerups
+      powerups = [];
+      createPowerups();
+      
+      // Create security cameras
+      securityCameras = [];
+      createSecurityCameras();
+      
+      // Create protein bars for extra lives
+      createProteinBars();
+      
+      // Reset message
+      message = "";
+      messageTimer = 0;
+      isInvulnerable = false;
+      invulnerabilityTimer = 0;
+      
+      // Add camera flash effect variables
+      cameraFlash = 0;
+      cameraFlashTimer = 0;
+      cameraFlashCooldown = 0;  // New cooldown variable
+    }
+    
+    function createPowerups() {
+      // Types of powerups: protein (more strength/speed), preworkout (invulnerability), creatine (more plates)
+      let powerupTypes = ["protein", "preworkout", "creatine"];
+      
+      // Create 3 random powerups
+      for (let i = 0; i < 3; i++) {
+        let type = powerupTypes[floor(random(powerupTypes.length))];
+        let validPosition = false;
+        let x, y;
+        
+        // Find a valid position that doesn't overlap with gym equipment
+        while (!validPosition) {
+          x = random(width - 100) + 50;
+          y = random(height - 150) + 50;
+          
+          validPosition = true;
+          for (let j = 0; j < gymEquipment.length; j++) {
+            let equip = gymEquipment[j];
+            if (x + 15 > equip.x && x - 15 < equip.x + equip.width &&
+                y + 15 > equip.y && y - 15 < equip.y + equip.height) {
+              validPosition = false;
+              break;
+            }
+          }
+        }
+        
+        powerups.push({
+          x: x,
+          y: y,
+          type: type,
+          width: 30,
+          height: 30,
+          collected: false,
+          pulseSize: 0,
+          pulseDirection: 1,
+          rotation: random(TWO_PI)
+        });
+      }
+    }
+    
+    function createProteinBars() {
+      // Create protein bars for extra lives
+      proteinBars = [];
+      
+      // Create 5 protein bars
+      for (let i = 0; i < 5; i++) {
+        let validPosition = false;
+        let x, y;
+        
+        // Find a valid position that doesn't overlap with gym equipment
+        while (!validPosition) {
+          x = random(width - 100) + 50;
+          y = random(height - 150) + 50;
+          
+          validPosition = true;
+          for (let j = 0; j < gymEquipment.length; j++) {
+            let equip = gymEquipment[j];
+            if (x + 15 > equip.x && x - 15 < equip.x + equip.width &&
+                y + 15 > equip.y && y - 15 < equip.y + equip.height) {
+              validPosition = false;
+              break;
+            }
+          }
+        }
+        
+        proteinBars.push({
+          x: x,
+          y: y,
+          width: 25,
+          height: 15,
+          collected: false,
+          pulseSize: 0,
+          pulseDirection: 1,
+          type: random() > 0.5 ? "bar" : "shake"
+        });
+      }
+    }
+    
+    function createSecurityCameras() {
+      // Create 4 security cameras in the corners
+      securityCameras.push({
+        x: 50,
+        y: 50,
+        angle: 45,
+        direction: 1,
+        sweepRange: 90,
+        baseAngle: 0,
+        lastSweepTime: 0
+      });
+      
+      securityCameras.push({
+        x: width - 50,
+        y: 50,
+        angle: 135,
+        direction: -1,
+        sweepRange: 90,
+        baseAngle: 180,
+        lastSweepTime: 0
+      });
+      
+      securityCameras.push({
+        x: 50,
+        y: height - 50,
+        angle: 315,
+        direction: -1,
+        sweepRange: 90,
+        baseAngle: 270,
+        lastSweepTime: 0
+      });
+      
+      securityCameras.push({
+        x: width - 50,
+        y: height - 50,
+        angle: 225,
+        direction: 1,
+        sweepRange: 90,
+        baseAngle: 270,
+        lastSweepTime: 0
+      });
+      
+      // Add a few more cameras in the middle of walls
+      securityCameras.push({
+        x: width / 2,
+        y: 30,
+        angle: 90,
+        direction: 1,
+        sweepRange: 120,
+        baseAngle: 90,
+        lastSweepTime: 0
+      });
+      
+      securityCameras.push({
+        x: width - 30,
+        y: height / 2,
+        angle: 180,
+        direction: -1,
+        sweepRange: 120,
+        baseAngle: 180,
+        lastSweepTime: 0
+      });
+    }
+    
+    function draw() {
+      // Different behavior based on game state
+      switch (gameState) {
+        case MAIN_MENU:
+          drawMainMenu();
+          break;
+        case GAMEPLAY:
+          updateGame();
+          drawGame();
+          break;
+        case GAME_OVER:
+          drawGameOver();
+          break;
+        case VICTORY:
+          drawVictory();
+          break;
+      }
+    }
+    
+    function drawMainMenu() {
+      background(20, 20, 40);
+      
+      // Title
+      fill(255, 100, 100);
+      textSize(60);
+      textAlign(CENTER, CENTER);
+      text("YAVNE", width / 2, 80);
+      
+      // Hebrew text - centered alignment
+      textAlign(CENTER, TOP);
+      fill(200, 200, 200);
+      textSize(24);
+      text("!נדפקת", width / 2, 140);
+      
+      textSize(16);
+      text("עלו עליך קבוצה של בעלים זועמים בדרך למכון הם יודעים הכל", width / 2, 180);
+      text("יש להם קבוצת ואטסאפ הם באים לעשות לך כיפה אדומה", width / 2, 200);
+      text("תכלס המצב לא משהו תשתמש במה שיש זרוק עליהם פלטות", width / 2, 220);
+      text("יש לך חטיפים ושייקים של חלבון כדי לטעון חיים", width / 2, 240);
+      text("ויש לך מזרקים אם אתה צריך קצת ״אקסטרה פוש״", width / 2, 260);
+      
+      text("שים לב הכל מצולם אז בלי פדיחות שוב יא נקניק", width / 2, 290);
+      
+      text("הם ינעלו אותך אתה חייב למצוא את המפתח ולברוח", width / 2, 320);
+      text("בחוץ מחכה לך מזוודה עם שפם תעודות מזויפות וכרטיסים למקסיקו", width / 2, 340);
+      
+      text("!יאלה תסיים עם זה מהר ואדיוס אמיגו", width / 2, 370);
+      
+      // Start button - VERY VISIBLE
+      fill(255, 100, 100);
+      rect(width / 2 - 100, 430, 200, 60, 10);
+      
+      fill(255);
+      textSize(30);
+      textAlign(CENTER, CENTER);
+      text("התחל", width / 2, 460);
+      
+      // Instructions
+      fill(180);
+      textSize(16);
+      text("WASD לתנועה, עכבר לכיוון, לחיצה לזריקת משקולות", width / 2, 520);
+      text("ניקוד: מכפיל זמן × בעלים שחוסלו", width / 2, 550);
+      
+      // Add disclaimer text at the bottom
+      fill(150, 150, 150);
+      textSize(12);
+      text("דיקליימר: המשחק הזה מומצא לחלוטין והוא פרי דמיוני ופרי דמיוני מלבד, כל קשר בינו לביו המציאות מקרי בהחלט", width / 2, 580);
+    }
+    
+    function drawGameOver() {
+      background(40, 10, 10);
+      
+      // Game Over text
+      fill(255, 50, 50);
+      textSize(60);
+      textAlign(CENTER, CENTER);
+      text("המשחק נגמר", width / 2, height / 3 - 50);
+      
+      // Description
+      fill(200);
+      textSize(20);
+      text("!הבעלים תפסו אותך", width / 2, height / 3 + 10);
+      
+      // Score display
+      fill(255, 200, 200);
+      textSize(30);
+      text("ניקוד: " + currentScore, width / 2, height / 3 + 60);
+      
+      // High score
+      fill(255);
+      textSize(20);
+      text("שיא: " + highScore, width / 2, height / 3 + 100);
+      
+      // Restart button
+      fill(100, 100, 200);
+      rect(width / 2 - 100, height / 2 + 80, 200, 60, 10);
+      
+      fill(255);
+      textSize(24);
+      text("נסה שוב", width / 2, height / 2 + 110);
+    }
+    
+    function drawVictory() {
+      background(10, 40, 10);
+      
+      // Victory text
+      fill(50, 255, 50);
+      textSize(50);
+      textAlign(CENTER, CENTER);
+      text("!ברחת בהצלחה", width / 2, height / 3 - 50);
+      
+      // Description
+      fill(200);
+      textSize(24);
+      text("!אדיוס יבנה! הולה מקסיקו", width / 2, height / 3 + 10);
+      
+      // Score breakdown
+      fill(255, 255, 200);
+      textSize(20);
+      text(":פירוט הניקוד", width / 2, height / 3 + 60);
+      
+      textSize(16);
+      text("בעלים שחוסלו: " + husbandKillCount + " × 500 = " + (husbandKillCount * 500), width / 2, height / 3 + 90);
+      text("מכפיל זמן: " + timeMultiplier.toFixed(2) + "×", width / 2, height / 3 + 120);
+      text("בונוס חיים: " + trainer.lives + " × 200 = " + (trainer.lives * 200), width / 2, height / 3 + 150);
+      
+      // Final score display
+      fill(255, 255, 100);
+      textSize(30);
+      text("ניקוד סופי: " + currentScore, width / 2, height / 3 + 190);
+      
+      // High score
+      if (currentScore >= highScore) {
+        fill(255, 200, 0);
+        textSize(24);
+        text("!שיא חדש", width / 2, height / 3 + 230);
+      }
+      
+      // Restart button
+      fill(100, 200, 100);
+      rect(width / 2 - 100, height * 0.8, 200, 60, 10);
+      
+      fill(255);
+      textSize(24);
+      text("שחק שוב", width / 2, height * 0.8 + 30);
+    }
+    
+    function updateGame() {
+      // Handle player movement with collision detection
+      let moved = false;
+      let newX = trainer.x;
+      let newY = trainer.y;
+      
+      if (keyIsDown(65)) { // A key - move left
+        newX = max(trainer.x - trainer.speed, trainer.width / 2);
+        moved = true;
+      }
+      if (keyIsDown(68)) { // D key - move right
+        newX = min(trainer.x + trainer.speed, width - trainer.width / 2);
+        moved = true;
+      }
+      if (keyIsDown(87)) { // W key - move up
+        newY = max(trainer.y - trainer.speed, trainer.height / 2);
+        moved = true;
+      }
+      if (keyIsDown(83)) { // S key - move down
+        newY = min(trainer.y + trainer.speed, height - trainer.height / 2);
+        moved = true;
+      }
+      
+      // Update aiming direction based on mouse position
+      let dx = mouseX - trainer.x;
+      let dy = mouseY - trainer.y;
+      let dist = sqrt(dx * dx + dy * dy);
+      
+      if (dist > 0) {
+        trainer.lastDirection = {
+          x: dx / dist,
+          y: dy / dist
+        };
+      }
+      
+      // CHANGE: Player can now move through gym equipment
+      // Only check collision with walls
+      let canMove = true;
+      if (newX < trainer.width/2 || newX > width - trainer.width/2 ||
+          newY < trainer.height/2 || newY > height - trainer.height/2) {
+        canMove = false;
+      }
+      
+      // Update position if no collision with walls
+      if (canMove) {
+        trainer.x = newX;
+        trainer.y = newY;
+      }
+      
+      // Update invulnerability timer
+      if (isInvulnerable) {
+        invulnerabilityTimer--;
+        if (invulnerabilityTimer <= 0) {
+          isInvulnerable = false;
+        }
+      }
+      
+      // Update husbands
+      for (let i = 0; i < husbands.length; i++) {
+        if (husbands[i].alive) {
+          // COMPLETELY REVISED HUSBAND MOVEMENT
+          
+          // Decrease timers
+          if (husbands[i].chargeTimer > 0) husbands[i].chargeTimer--;
+          if (husbands[i].stunTimer > 0) husbands[i].stunTimer--;
+          
+          // Calculate direction to trainer
+          let dx = trainer.x - husbands[i].x;
+          let dy = trainer.y - husbands[i].y;
+          let dist = sqrt(dx * dx + dy * dy);
+          
+          // Default movement values
+          let newX = husbands[i].x;
+          let newY = husbands[i].y;
+          let moveSpeed = 0;
+          
+          // State machine for husband behavior
+          if (husbands[i].stunTimer > 0) {
+            // Stunned - don't move
+            // Do nothing, keeping current position
+          } else if (husbands[i].state === "charge") {
+            // In charging state
+            moveSpeed = husbands[i].chargeSpeed;
+            
+            // Move directly toward trainer
+            if (dist > 0) {
+              newX = husbands[i].x + (dx / dist) * moveSpeed;
+              newY = husbands[i].y + (dy / dist) * moveSpeed;
+            }
+            
+            // Check if charge timer expired
+            if (husbands[i].chargeTimer <= 0) {
+              husbands[i].state = "wander";
+              husbands[i].wanderTimer = random(30, 90);
+              husbands[i].wanderDirection = p5.Vector.random2D();
+            }
+          } else {
+            // Wandering state
+            // Only update wander timer when in wander state
+            husbands[i].wanderTimer--;
+            
+            // Check if we can see the trainer
+            let canSeeTrainer = false;
+            if (dist < husbands[i].visionRange) {
+              // Check if there's an obstacle between husband and trainer
+              canSeeTrainer = true;
+              for (let j = 0; j < gymEquipment.length; j++) {
+                let equip = gymEquipment[j];
+                if (lineRectIntersection(
+                  husbands[i].x, husbands[i].y, 
+                  trainer.x, trainer.y,
+                  equip.x, equip.y, equip.width, equip.height)) {
+                  canSeeTrainer = false;
+                  break;
+                }
+              }
+            }
+            
+            if (canSeeTrainer) {
+              // Spotted the trainer! Change to charge state
+              husbands[i].state = "charge";
+              husbands[i].chargeTimer = 360;  // Even longer charge time (6 seconds)
+              displayMessage("A husband spotted you!");
+            } else {
+              // Normal wandering behavior
+              moveSpeed = husbands[i].speed;
+              
+              if (husbands[i].wanderTimer <= 0) {
+                // Change direction
+                husbands[i].wanderDirection = p5.Vector.random2D();
+                husbands[i].wanderTimer = random(30, 90);
+              }
+              
+              // Only move if not paused - MAKE THEM MOVE MORE OFTEN
+              if (husbands[i].wanderTimer < 80) {
+                newX = husbands[i].x + husbands[i].wanderDirection.x * moveSpeed;
+                newY = husbands[i].y + husbands[i].wanderDirection.y * moveSpeed;
+              }
+              
+              // Bounce off walls
+              if (newX < 20 || newX > width - 20) {
+                husbands[i].wanderDirection.x *= -1;
+                newX = husbands[i].x;
+              }
+              if (newY < 20 || newY > height - 20) {
+                husbands[i].wanderDirection.y *= -1;
+                newY = husbands[i].y;
+              }
+              
+              // MAKE HUSBANDS EVEN MORE INTELLIGENT
+              // Higher chance to "sniff out" the player
+              if (random() < husbands[i].intelligence) { // 3-8% chance each frame to "sniff out" the player
+                let playerDir = createVector(dx, dy).normalize();
+                husbands[i].wanderDirection = createVector(
+                  playerDir.x + random(-0.3, 0.3),  // More accurate direction
+                  playerDir.y + random(-0.3, 0.3)
+                ).normalize();
+                
+                // Occasionally increase speed when sniffing out player
+                if (random() < 0.3) {
+                  moveSpeed *= 1.5;
+                }
+              }
+              
+              // Husbands can occasionally communicate with each other
+              if (random() < 0.005) { // 0.5% chance each frame
+                // Check if any other husband can see the player
+                for (let j = 0; j < husbands.length; j++) {
+                  if (i !== j && husbands[j].alive && husbands[j].state === "charge") {
+                    // This husband knows where the player is, share that info
+                    husbands[i].state = "charge";
+                    husbands[i].chargeTimer = 240; // 4 seconds
+                    displayMessage("The husbands are coordinating!");
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          
+          // CHANGE: Husbands now pass through gym equipment
+          // Only check collision with walls
+          let canMove = true;
+          if (newX < husbands[i].width/2 || newX > width - husbands[i].width/2 ||
+              newY < husbands[i].height/2 || newY > height - husbands[i].height/2) {
+            canMove = false;
+          }
+          
+          // CHANGE: Enforce maximum speed limit
+          const MAX_SPEED = 2.5;  // Further increased max speed
+          let actualDx = newX - husbands[i].x;
+          let actualDy = newY - husbands[i].y;
+          let actualSpeed = sqrt(actualDx * actualDx + actualDy * actualDy);
+          
+          if (actualSpeed > MAX_SPEED) {
+            // Scale down the movement to the maximum speed
+            newX = husbands[i].x + (actualDx / actualSpeed) * MAX_SPEED;
+            newY = husbands[i].y + (actualDy / actualSpeed) * MAX_SPEED;
+          }
+          
+          // Update position if no collision with walls
+          if (canMove) {
+            husbands[i].x = newX;
+            husbands[i].y = newY;
+          } else {
+            // Change direction when hitting walls
+            husbands[i].wanderDirection = p5.Vector.random2D();
+          }
+          
+          // Check collision with trainer
+          if (!isInvulnerable && dist < (trainer.width + husbands[i].width) / 2) {
+            trainer.lives--;
+            if (trainer.lives <= 0) {
+              gameState = GAME_OVER;
+            } else {
+              displayMessage("Ouch! That hurt!");
+              isInvulnerable = true;
+              invulnerabilityTimer = 60;
+            }
+          }
+        }
+      }
+      
+      // Check for plate collection
+      for (let i = 0; i < plates.length; i++) {
+        if (!plates[i].collected) {
+          let dx = trainer.x - plates[i].x;
+          let dy = trainer.y - plates[i].y;
+          let dist = sqrt(dx * dx + dy * dy);
+          
+          if (dist < (trainer.width + plates[i].width) / 2) {
+            plates[i].collected = true;
+            trainer.plates += 5;
+            displayMessage("Got 5 more plates for my arsenal!");
+          }
+        }
+      }
+      
+      // Update score based on time (lower time = higher score)
+      let elapsedTime = (millis() - gameStartTime) / 1000;
+      currentScore = Math.max(10000 - Math.floor(elapsedTime) * 10, 0);
+      
+      // Update thrown plates with collision detection for gym equipment
+      for (let i = thrownPlates.length - 1; i >= 0; i--) {
+        // Move the plate
+        thrownPlates[i].x += thrownPlates[i].vx;
+        thrownPlates[i].y += thrownPlates[i].vy;
+        
+        // Check if plate is out of bounds
+        if (thrownPlates[i].x < 0 || thrownPlates[i].x > width || 
+            thrownPlates[i].y < 0 || thrownPlates[i].y > height) {
+          thrownPlates.splice(i, 1);
+          continue;
+        }
+        
+        // Check collisions with husbands
+        for (let j = 0; j < husbands.length; j++) {
+          if (husbands[j].alive) {
+            let dx = thrownPlates[i].x - husbands[j].x;
+            let dy = thrownPlates[i].y - husbands[j].y;
+            let dist = sqrt(dx * dx + dy * dy);
+            
+            if (dist < (thrownPlates[i].size + husbands[j].width) / 2) {
+              // Husband is hit - reduce health
+              husbands[j].health--;
+              
+              // Only kill husband if health reaches 0
+              if (husbands[j].health <= 0) {
+                husbands[j].alive = false;
+                
+                // Increment husband kill count
+                husbandKillCount++;
+                
+                // Add points for hitting a husband (500 base points per husband)
+                let killPoints = 500;
+                
+                // Apply time multiplier to the kill points
+                killPoints = Math.floor(killPoints * timeMultiplier);
+                
+                // Add to score
+                currentScore += killPoints;
+                
+                // Check if this husband had the key
+                if (husbands[j].hasKey) {
+                  key.x = husbands[j].x;
+                  key.y = husbands[j].y;
+                  key.visible = true;
+                  displayMessage("That one dropped a key! +" + killPoints + " points!");
+                } else {
+                  displayMessage("Eat this, jealous husband! +" + killPoints + " points!");
+                }
+              } else {
+                // Husband is hit but not killed
+                displayMessage("!פגעת בבעל! נשאר לו עוד " + husbands[j].health + " חיים");
+                
+                // Stun the husband briefly - shorter stun time for harder difficulty
+                husbands[j].stunTimer = 20;
+                
+                // Enrage the husband - make him faster after being hit
+                husbands[j].speed *= 1.1;
+                husbands[j].chargeSpeed *= 1.1;
+              }
+              
+              thrownPlates.splice(i, 1);
+              break;
+            }
+          }
+        }
+      }
+      
+      // Check for key collection
+      if (key.visible && !key.collected) {
+        let dx = trainer.x - key.x;
+        let dy = trainer.y - key.y;
+        let dist = sqrt(dx * dx + dy * dy);
+        
+        if (dist < (trainer.width + key.width) / 2) {
+          key.collected = true;
+          trainer.hasKey = true;
+          displayMessage("Got the key! Time to escape!");
+        }
+      }
+      
+      // Check for door (escape)
+      if (trainer.hasKey) {
+        let dx = trainer.x - door.x - door.width / 2;
+        let dy = trainer.y - door.y - door.height / 2;
+        
+        if (abs(dx) < (trainer.width + door.width) / 2 && 
+            abs(dy) < (trainer.height + door.height) / 2) {
+          // Calculate final score based on time multiplier and husband kills
+          let baseScore = husbandKillCount * 500;
+          let finalScore = Math.floor(baseScore * timeMultiplier);
+          
+          // Add bonus for remaining lives
+          let livesBonus = trainer.lives * 200;
+          finalScore += livesBonus;
+          
+          // Set current score to final calculated score
+          currentScore = finalScore;
+          
+          // Update high score
+          if (currentScore > highScore) {
+            highScore = currentScore;
+          }
+          
+          gameState = VICTORY;
+          displayMessage("Adios, Yavne! Hello, Mexico!");
+        }
+      }
+      
+      // Update message timer
+      if (messageTimer > 0) {
+        messageTimer--;
+      }
+      
+      // Update security cameras
+      updateSecurityCameras();
+      
+      // Check for protein bar collection
+      for (let i = 0; i < proteinBars.length; i++) {
+        if (!proteinBars[i].collected) {
+          // Update pulse animation
+          proteinBars[i].pulseSize += proteinBars[i].pulseDirection * 0.03;
+          if (proteinBars[i].pulseSize > 1.3) {
+            proteinBars[i].pulseDirection = -1;
+          } else if (proteinBars[i].pulseSize < 0.7) {
+            proteinBars[i].pulseDirection = 1;
+          }
+          
+          // Check collision with trainer
+          let dx = trainer.x - proteinBars[i].x;
+          let dy = trainer.y - proteinBars[i].y;
+          let dist = sqrt(dx * dx + dy * dy);
+          
+          if (dist < (trainer.width + proteinBars[i].width) / 2) {
+            proteinBars[i].collected = true;
+            
+            // Add an extra life
+            trainer.lives++;
+            
+            if (proteinBars[i].type === "bar") {
+              displayMessage("Protein bar! +1 life!");
+            } else {
+              displayMessage("Protein shake! +1 life!");
+            }
+          }
+        }
+      }
+      
+      // Check for powerup collection
+      for (let i = 0; i < powerups.length; i++) {
+        if (!powerups[i].collected) {
+          // Update pulse animation
+          powerups[i].pulseSize += powerups[i].pulseDirection * 0.05;
+          if (powerups[i].pulseSize > 1.5) {
+            powerups[i].pulseDirection = -1;
+          } else if (powerups[i].pulseSize < 0.5) {
+            powerups[i].pulseDirection = 1;
+          }
+          
+          // Rotate syringe slightly for animation
+          powerups[i].rotation += 0.01;
+          
+          // Check collision with trainer
+          let dx = trainer.x - powerups[i].x;
+          let dy = trainer.y - powerups[i].y;
+          let dist = sqrt(dx * dx + dy * dy);
+          
+          if (dist < (trainer.width + powerups[i].width) / 2) {
+            powerups[i].collected = true;
+            
+            // Apply powerup effect
+            switch (powerups[i].type) {
+              case "protein":
+                trainer.speed += 2;
+                displayMessage("Steroid injection! Speed increased!");
+                break;
+              case "preworkout":
+                isInvulnerable = true;
+                invulnerabilityTimer = 300;
+                displayMessage("Adrenaline shot! Temporary invulnerability!");
+                break;
+              case "creatine":
+                trainer.plates += 5;
+                displayMessage("Testosterone boost! +5 weight plates!");
+                break;
+            }
+          }
+        }
+      }
+      
+      // Update time multiplier (decreases by 0.01 per second until it reaches 0.01)
+      let elapsedSeconds = (millis() - gameStartTime) / 1000;
+      timeMultiplier = max(0.01, 1.0 - (elapsedSeconds * 0.01));
+    }
+    
+    function updateSecurityCameras() {
+      for (let i = 0; i < securityCameras.length; i++) {
+        let camera = securityCameras[i];
+        
+        // Update camera angle
+        if (millis() - camera.lastSweepTime > 30) {
+          camera.angle += camera.direction * 0.5;
+          camera.lastSweepTime = millis();
+          
+          // Check if we need to change direction
+          let relativeAngle = (camera.angle - camera.baseAngle + 360) % 360;
+          if (relativeAngle > camera.sweepRange || relativeAngle < 0) {
+            camera.direction *= -1;
+          }
+        }
+        
+        // Check if trainer is in camera's field of view
+        let dx = trainer.x - camera.x;
+        let dy = trainer.y - camera.y;
+        let distToTrainer = sqrt(dx * dx + dy * dy);
+        
+        if (distToTrainer < 250) {
+          let angleToTrainer = atan2(dy, dx) * 180 / PI;
+          if (angleToTrainer < 0) angleToTrainer += 360;
+          
+          let angleDiff = abs((angleToTrainer - camera.angle + 180) % 360 - 180);
+          
+          if (angleDiff < 35) {
+            // Trainer spotted by camera!
+            // Only flash if cooldown has expired (once every 10 seconds)
+            if (cameraFlashTimer <= 0 && cameraFlashCooldown <= 0) {
+              // Create camera flash effect instead of message
+              cameraFlash = 255;
+              cameraFlashTimer = 30;
+              cameraFlashCooldown = 600; // 10 seconds at 60fps
+              
+              // Play camera sound (simulated with a message that will be hidden by flash)
+              displayMessage("*CLICK*");
+            }
+            
+            // Alert husbands to trainer's position regardless of flash cooldown
+            let aliveHusbands = husbands.filter(h => h.alive);
+            if (aliveHusbands.length > 0) {
+              // Alert ALL husbands within a certain range of the camera
+              for (let j = 0; j < husbands.length; j++) {
+                if (husbands[j].alive) {
+                  let distToCam = sqrt(
+                    (husbands[j].x - camera.x) * (husbands[j].x - camera.x) + 
+                    (husbands[j].y - camera.y) * (husbands[j].y - camera.y)
+                  );
+                  
+                  // Only alert if not recently alerted (prevents stacking charge speed boosts)
+                  let currentTime = millis();
+                  if (distToCam < 350 && currentTime - husbands[j].lastCameraAlert > 3000) {
+                    husbands[j].state = "charge";
+                    husbands[j].chargeTimer = 360;  // Longer charge time
+                    husbands[j].chargeSpeed += 0.3; // Bigger speed boost
+                    husbands[j].lastCameraAlert = currentTime;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Update camera flash effect
+      if (cameraFlashTimer > 0) {
+        cameraFlashTimer--;
+        if (cameraFlashTimer <= 0) {
+          cameraFlash = 0;
+        }
+      }
+      
+      // Update camera flash cooldown
+      if (cameraFlashCooldown > 0) {
+        cameraFlashCooldown--;
+      }
+    }
+    
+    function drawGame() {
+      // Draw background (gym)
+      background(240, 240, 245);
+      
+      // Draw gym walls and floor
+      fill(220, 220, 225);
+      rect(0, 0, width, height);
+      
+      // Draw gym floor
+      fill(180, 180, 190);
+      rect(0, height - 100, width, 100);
+      
+      // Draw gym equipment
+      drawGymEquipment();
+      
+      // Draw plates
+      for (let i = 0; i < plates.length; i++) {
+        if (!plates[i].collected) {
+          // Weight plate outer ring
+          fill(80, 80, 80);
+          ellipse(plates[i].x, plates[i].y, plates[i].width, plates[i].height);
+          
+          // Inner circle
+          fill(120, 120, 120);
+          ellipse(plates[i].x, plates[i].y, plates[i].width * 0.7, plates[i].height * 0.7);
+          
+          // Center hole
+          fill(50, 50, 50);
+          ellipse(plates[i].x, plates[i].y, plates[i].width * 0.2, plates[i].height * 0.2);
+        }
+      }
+      
+      // Draw thrown plates
+      for (let i = 0; i < thrownPlates.length; i++) {
+        // Weight plate outer ring
+        fill(80, 80, 80);
+        ellipse(thrownPlates[i].x, thrownPlates[i].y, thrownPlates[i].size, thrownPlates[i].size);
+        
+        // Inner circle
+        fill(120, 120, 120);
+        ellipse(thrownPlates[i].x, thrownPlates[i].y, thrownPlates[i].size * 0.7, thrownPlates[i].size * 0.7);
+        
+        // Center hole
+        fill(50, 50, 50);
+        ellipse(thrownPlates[i].x, thrownPlates[i].y, thrownPlates[i].size * 0.2, thrownPlates[i].size * 0.2);
+      }
+      
+      // Draw key if visible
+      if (key.visible && !key.collected) {
+        fill(255, 255, 0);
+        ellipse(key.x, key.y, key.width, key.height);
+        
+        // Key teeth
+        fill(200, 200, 0);
+        rect(key.x + 5, key.y - 5, 12, 4);
+        rect(key.x + 5, key.y, 8, 4);
+        rect(key.x + 5, key.y + 5, 10, 4);
+      }
+      
+      // Draw door
+      fill(139, 69, 19);
+      rect(door.x, door.y, door.width, door.height);
+      
+      // Door handle
+      fill(255, 215, 0);
+      ellipse(door.x + 5, door.y + door.height / 2, 8, 8);
+      
+      // Draw husbands
+      for (let i = 0; i < husbands.length; i++) {
+        if (husbands[i].alive) {
+          drawHusband(husbands[i]);
+          
+          // Indicate key holder with subtle glow
+          if (husbands[i].hasKey && !key.visible) {
+            noFill();
+            stroke(255, 255, 0, 100);
+            strokeWeight(3);
+            ellipse(husbands[i].x, husbands[i].y, husbands[i].width + 15, husbands[i].height + 15);
+            noStroke();
+          }
+        }
+      }
+      
+      // Draw trainer
+      drawTrainer();
+      
+      // Draw protein bars
+      drawProteinBars();
+      
+      // Draw powerups
+      drawPowerups();
+      
+      // Draw security cameras
+      drawSecurityCameras();
+      
+      // Draw UI
+      drawUI();
+      
+      // Draw camera flash effect on top of everything
+      if (cameraFlash > 0) {
+        // Draw white flash that fades out
+        fill(255, 255, 255, cameraFlash);
+        rect(0, 0, width, height);
+        
+        // Reduce flash intensity
+        cameraFlash = max(0, cameraFlash - 15);
+        
+        // Draw camera icon in the center
+        if (cameraFlashTimer > 15) {
+          fill(0);
+          ellipse(width/2, height/2, 60, 60);
+          fill(50);
+          ellipse(width/2, height/2, 40, 40);
+          fill(100);
+          ellipse(width/2, height/2, 20, 20);
+          
+          // Camera text
+          textAlign(CENTER, CENTER);
+          textSize(16);
+          fill(255, 0, 0);
+          text("SPOTTED!", width/2, height/2 + 50);
+        }
+      }
+    }
+    
+    function drawTrainer() {
+      push();
+      
+      // Body - muscular torso
+      if (isInvulnerable && frameCount % 6 < 3) {
+        // Blinking effect when invulnerable
+        fill(255, 100, 100, 150);
+      } else {
+        fill(255, 100, 100);
+      }
+      
+      // Main body/torso
+      ellipse(trainer.x, trainer.y, trainer.width, trainer.height);
+      
+      // Muscular arms
+      fill(255, 80, 80);
+      // Left arm
+      ellipse(trainer.x - trainer.width/2 - 5, trainer.y, 20, 20);
+      // Right arm
+      ellipse(trainer.x + trainer.width/2 + 5, trainer.y, 20, 20);
+      
+      // Muscular shoulders
+      ellipse(trainer.x - trainer.width/3, trainer.y - trainer.height/4, 15, 15);
+      ellipse(trainer.x + trainer.width/3, trainer.y - trainer.height/4, 15, 15);
+      
+      // Legs
+      ellipse(trainer.x - trainer.width/4, trainer.y + trainer.height/2 + 10, 15, 25);
+      ellipse(trainer.x + trainer.width/4, trainer.y + trainer.height/2 + 10, 15, 25);
+      
+      // Face
+      // Eyes
+      fill(255);
+      ellipse(trainer.x - 8, trainer.y - 5, 10, 10);
+      ellipse(trainer.x + 8, trainer.y - 5, 10, 10);
+      
+      // Pupils
+      fill(0);
+      ellipse(trainer.x - 8 + trainer.lastDirection.x * 2, trainer.y - 5 + trainer.lastDirection.y * 2, 4, 4);
+      ellipse(trainer.x + 8 + trainer.lastDirection.x * 2, trainer.y - 5 + trainer.lastDirection.y * 2, 4, 4);
+      
+      // Mouth
+      fill(0);
+      arc(trainer.x, trainer.y + 8, 15, 10, 0, PI);
+      
+      // Hair
+      fill(50, 30, 0);
+      arc(trainer.x, trainer.y - 10, 30, 20, PI, 0);
+      
+      // Muscle definition lines
+      stroke(200, 50, 50);
+      strokeWeight(1);
+      // Abs
+      line(trainer.x, trainer.y - 10, trainer.x, trainer.y + 10);
+      line(trainer.x - 5, trainer.y, trainer.x + 5, trainer.y);
+      // Arm definition
+      line(trainer.x - trainer.width/2 - 10, trainer.y, trainer.x - trainer.width/3, trainer.y - 5);
+      line(trainer.x + trainer.width/2 + 10, trainer.y, trainer.x + trainer.width/3, trainer.y - 5);
+      
+      // Draw aiming line when player has plates
+      if (trainer.plates > 0) {
+        stroke(255, 0, 0, 100);
+        strokeWeight(2);
+        let aimX = trainer.x + trainer.lastDirection.x * 100;
+        let aimY = trainer.y + trainer.lastDirection.y * 100;
+        line(trainer.x, trainer.y, aimX, aimY);
+        
+        // Draw aiming target
+        noFill();
+        stroke(255, 0, 0, 150);
+        ellipse(mouseX, mouseY, 15, 15);
+        stroke(255, 0, 0, 200);
+        ellipse(mouseX, mouseY, 5, 5);
+      }
+      
+      noStroke();
+      pop();
+    }
+    
+    function drawHusband(husband) {
+      push();
+      
+      // Body - muscular but angry husband
+      if (husband.state === "charge") {
+        // Red tint when charging
+        fill(husband.color.levels[0] + 50, husband.color.levels[1] - 30, husband.color.levels[2] - 30);
+      } else if (husband.stunTimer > 0) {
+        // Dizzy when stunned
+        fill(husband.color.levels[0] - 30, husband.color.levels[1] - 30, husband.color.levels[2] + 30);
+      } else {
+        fill(husband.color);
+      }
+      
+      // Main body/torso
+      ellipse(husband.x, husband.y, husband.width, husband.height);
+      
+      // Muscular arms - bigger than trainer to look threatening
+      fill(husband.color.levels[0] - 30, husband.color.levels[1] - 30, husband.color.levels[2] - 30);
+      // Left arm
+      ellipse(husband.x - husband.width/2 - 8, husband.y, 25, 25);
+      // Right arm
+      ellipse(husband.x + husband.width/2 + 8, husband.y, 25, 25);
+      
+      // Muscular shoulders - bigger than trainer
+      ellipse(husband.x - husband.width/3, husband.y - husband.height/4, 18, 18);
+      ellipse(husband.x + husband.width/3, husband.y - husband.height/4, 18, 18);
+      
+      // Legs
+      ellipse(husband.x - husband.width/4, husband.y + husband.height/2 + 10, 18, 28);
+      ellipse(husband.x + husband.width/4, husband.y + husband.height/2 + 10, 18, 28);
+      
+      // Face
+      // Eyes
+      fill(255);
+      ellipse(husband.x - 8, husband.y - 5, 10, 10);
+      ellipse(husband.x + 8, husband.y - 5, 10, 10);
+      
+      // Angry eyebrows
+      stroke(0);
+      strokeWeight(2);
+      if (husband.state === "charge") {
+        // More angry eyebrows when charging
+        line(husband.x - 13, husband.y - 12, husband.x - 3, husband.y - 7);
+        line(husband.x + 3, husband.y - 7, husband.x + 13, husband.y - 12);
+      } else if (husband.stunTimer > 0) {
+        // Dizzy eyebrows when stunned
+        line(husband.x - 13, husband.y - 7, husband.x - 3, husband.y - 10);
+        line(husband.x + 3, husband.y - 10, husband.x + 13, husband.y - 7);
+      } else {
+        line(husband.x - 13, husband.y - 10, husband.x - 3, husband.y - 7);
+        line(husband.x + 3, husband.y - 7, husband.x + 13, husband.y - 10);
+      }
+      
+      // Pupils
+      fill(0);
+      let dx = trainer.x - husband.x;
+      let dy = trainer.y - husband.y;
+      let dist = sqrt(dx * dx + dy * dy);
+      let ex = 0;
+      let ey = 0;
+      
+      if (dist > 0) {
+        ex = dx / dist * 2;
+        ey = dy / dist * 2;
+      }
+      
+      if (husband.stunTimer > 0) {
+        // Dizzy eyes when stunned
+        fill(0);
+        for (let i = 0; i < 2; i++) {
+          let angle = frameCount * 0.2 + i * PI;
+          let spiralX = cos(angle) * 3;
+          let spiralY = sin(angle) * 3;
+          ellipse(husband.x - 8 + spiralX, husband.y - 5 + spiralY, 4, 4);
+          ellipse(husband.x + 8 + spiralX, husband.y - 5 + spiralY, 4, 4);
+        }
+      } else {
+        ellipse(husband.x - 8 + ex, husband.y - 5 + ey, 4, 4);
+        ellipse(husband.x + 8 + ex, husband.y - 5 + ey, 4, 4);
+      }
+      
+      // Mouth - angry scowl
+      fill(0);
+      if (husband.state === "charge") {
+        // Open mouth when charging
+        ellipse(husband.x, husband.y + 8, 15, 10);
+      } else if (husband.stunTimer > 0) {
+        // Dizzy mouth when stunned
+        arc(husband.x, husband.y + 8, 15, 10, PI, TWO_PI);
+      } else {
+        arc(husband.x, husband.y + 8, 15, 10, 0, PI);
+      }
+      
+      // Mustache (for some husbands)
+      if (husband.mustache) {
+        fill(30);
+        rect(husband.x - 15, husband.y + 3, 30, 6);
+      }
+      
+      // Hair or bald
+      if (!husband.bald) {
+        fill(30);
+        arc(husband.x, husband.y - 12, 30, 20, PI, 0);
+      }
+      
+      // Muscle definition lines
+      stroke(husband.color.levels[0] - 50, husband.color.levels[1] - 50, husband.color.levels[2] - 50);
+      strokeWeight(1);
+      // Abs - more defined than trainer
+      line(husband.x, husband.y - 12, husband.x, husband.y + 12);
+      line(husband.x - 6, husband.y - 6, husband.x + 6, husband.y - 6);
+      line(husband.x - 6, husband.y, husband.x + 6, husband.y);
+      line(husband.x - 6, husband.y + 6, husband.x + 6, husband.y + 6);
+      
+      // Arm definition - bulging muscles
+      line(husband.x - husband.width/2 - 15, husband.y, husband.x - husband.width/3, husband.y - 5);
+      line(husband.x + husband.width/2 + 15, husband.y, husband.x + husband.width/3, husband.y - 5);
+      
+      noStroke();
+      pop();
+    }
+    
+    // Helper function to check if a line intersects with a rectangle
+    function lineRectIntersection(x1, y1, x2, y2, rx, ry, rw, rh) {
+      // Check if either endpoint is inside the rectangle
+      if (x1 >= rx && x1 <= rx + rw && y1 >= ry && y1 <= ry + rh) return true;
+      if (x2 >= rx && x2 <= rx + rw && y2 >= ry && y2 <= ry + rh) return true;
+      
+      // Check if line intersects any of the rectangle's edges
+      // Line equation: y = mx + b
+      let m = (y2 - y1) / (x2 - x1);
+      let b = y1 - m * x1;
+      
+      // To avoid division by zero for vertical lines
+      if (!isFinite(m)) {
+        // Vertical line
+        if (x1 >= rx && x1 <= rx + rw) {
+          // Check if the vertical line intersects the top or bottom edge
+          let minY = min(y1, y2);
+          let maxY = max(y1, y2);
+          return (ry <= maxY && ry + rh >= minY);
+        }
+        return false;
+      }
+      
+      // Check intersection with horizontal edges (top and bottom)
+      let xTop = (ry - b) / m;
+      let xBottom = (ry + rh - b) / m;
+      
+      if ((xTop >= rx && xTop <= rx + rw && xTop >= min(x1, x2) && xTop <= max(x1, x2)) ||
+          (xBottom >= rx && xBottom <= rx + rw && xBottom >= min(x1, x2) && xBottom <= max(x1, x2))) {
+        return true;
+      }
+      
+      // Check intersection with vertical edges (left and right)
+      let yLeft = m * rx + b;
+      let yRight = m * (rx + rw) + b;
+      
+      if ((yLeft >= ry && yLeft <= ry + rh && yLeft >= min(y1, y2) && yLeft <= max(y1, y2)) ||
+          (yRight >= ry && yRight <= ry + rh && yRight >= min(y1, y2) && yRight <= max(y1, y2))) {
+        return true;
+      }
+      
+      return false;
+    }
+    
+    function drawGymEquipment() {
+      // REMOVE any stroke settings at the beginning to ensure no red outlines
+      noStroke();
+      
+      for (let i = 0; i < gymEquipment.length; i++) {
+        let equip = gymEquipment[i];
+        
+        switch (equip.type) {
+          case "bench":
+            // Bench
+            fill(150, 150, 150);
+            rect(equip.x, equip.y, equip.width, equip.height, 5);
+            
+            // Legs
+            fill(100, 100, 100);
+            rect(equip.x + 20, equip.y + equip.height, 10, 20);
+            rect(equip.x + equip.width - 30, equip.y + equip.height, 10, 20);
+            break;
+            
+          case "rack":
+            // Rack frame
+            fill(80, 80, 80);
+            rect(equip.x, equip.y, 20, equip.height);
+            rect(equip.x + equip.width - 20, equip.y, 20, equip.height);
+            rect(equip.x, equip.y, equip.width, 10);
+            
+            // Bar holder
+            fill(60, 60, 60);
+            rect(equip.x - 5, equip.y + 10, 10, 5);
+            rect(equip.x + equip.width - 5, equip.y + 10, 10, 5);
+            break;
+            
+          case "treadmill":
+            // Treadmill base
+            fill(40, 40, 40);
+            rect(equip.x, equip.y, equip.width, equip.height, 5);
+            
+            // Treadmill console
+            fill(60, 60, 60);
+            rect(equip.x + 20, equip.y - 20, equip.width - 40, 20, 3);
+            
+            // Treadmill belt
+            fill(20, 20, 20);
+            rect(equip.x + 10, equip.y + 10, equip.width - 20, equip.height - 20);
+            break;
+            
+          case "weights":
+            // Weight rack
+            fill(100, 100, 100);
+            rect(equip.x, equip.y, equip.width, equip.height);
+            
+            // Weights
+            for (let j = 0; j < 3; j++) {
+              fill(80, 80, 80);
+              ellipse(equip.x + 10 + j * 10, equip.y + 10, 15, 15);
+            }
+            break;
+            
+          case "dumbbells":
+            // Dumbbell rack
+            fill(80, 80, 80);
+            rect(equip.x, equip.y, equip.width, equip.height, 3);
+            
+            // Dumbbells
+            for (let j = 0; j < 4; j++) {
+              fill(50, 50, 50);
+              rect(equip.x + 10 + j * 20, equip.y - 15, 5, 15);
+              
+              fill(120, 120, 120);
+              ellipse(equip.x + 12.5 + j * 20, equip.y - 15, 15, 15);
+            }
+            break;
+            
+          case "mirror":
+            // Mirror frame
+            fill(120, 80, 40);
+            rect(equip.x, equip.y, equip.width, equip.height + 150, 2);
+            
+            // Mirror surface
+            fill(200, 200, 255, 150);
+            rect(equip.x + 5, equip.y + 5, equip.width - 10, equip.height + 140);
+            break;
+            
+          case "waterCooler":
+            // Water cooler base
+            fill(200, 200, 200);
+            rect(equip.x, equip.y + equip.height - 20, equip.width, 20, 2);
+            
+            // Water tank
+            fill(200, 230, 255, 200);
+            rect(equip.x, equip.y, equip.width, equip.height - 20, 5, 5, 0, 0);
+            
+            // Water level
+            fill(150, 200, 255, 150);
+            rect(equip.x + 5, equip.y + 15, equip.width - 10, equip.height - 40);
+            break;
+            
+          case "yogaMat":
+            // Yoga mat
+            fill(150, 80, 200);
+            rect(equip.x, equip.y, equip.width, equip.height, 5);
+            
+            // Mat texture - use noStroke before and after to prevent red lines
+            stroke(140, 70, 190);
+            strokeWeight(1);
+            for (let j = 0; j < 5; j++) {
+              line(equip.x, equip.y + j * 25, equip.x + equip.width, equip.y + j * 25);
+            }
+            noStroke();
+            break;
+            
+          case "benchPress":
+            // Bench
+            fill(120, 120, 120);
+            rect(equip.x + 20, equip.y, equip.width - 40, equip.height / 2, 3);
+            
+            // Rack stands
+            fill(80, 80, 80);
+            rect(equip.x, equip.y - 30, 15, 80);
+            rect(equip.x + equip.width - 15, equip.y - 30, 15, 80);
+            
+            // Barbell
+            fill(150, 150, 150);
+            rect(equip.x - 10, equip.y - 20, equip.width + 20, 10);
+            
+            // Weights on barbell
+            fill(80, 80, 80);
+            ellipse(equip.x, equip.y - 15, 30, 30);
+            ellipse(equip.x + equip.width, equip.y - 15, 30, 30);
+            break;
+        }
+      }
+      // Ensure no stroke is active after drawing all equipment
+      noStroke();
+    }
+    
+    function drawUI() {
+      // Lives
+      fill(255, 100, 100);
+      textSize(20);
+      textAlign(LEFT, TOP);
+      text("חיים: ", 20, 20);
+      
+      for (let i = 0; i < trainer.lives; i++) {
+        fill(255, 50, 50);
+        ellipse(100 + i * 25, 30, 20, 20);
+      }
+      
+      // Plates counter
+      fill(80, 80, 80);
+      ellipse(30, 70, 20, 20);
+      fill(120, 120, 120);
+      ellipse(30, 70, 14, 14);
+      fill(50, 50, 50);
+      ellipse(30, 70, 4, 4);
+      
+      fill(255);
+      textAlign(LEFT, CENTER);
+      text(": " + trainer.plates, 40, 70);
+      
+      // MOVED: Status panel to top right
+      drawStatusPanel();
+      
+      // Score display
+      fill(255);
+      textAlign(RIGHT, TOP);
+      textSize(20);
+      text("ניקוד: " + currentScore, width - 20, 20);
+      
+      // Time display and multiplier
+      let elapsedTime = Math.floor((millis() - gameStartTime) / 1000);
+      let minutes = Math.floor(elapsedTime / 60);
+      let seconds = elapsedTime % 60;
+      text("זמן: " + minutes + ":" + (seconds < 10 ? "0" : "") + seconds, width - 20, 50);
+      text("מכפיל: " + timeMultiplier.toFixed(2) + "×", width - 20, 80);
+      
+      // Husband kill counter
+      text("בעלים: " + husbandKillCount + "/5", width - 20, 110);
+      
+      // High score
+      text("שיא: " + highScore, width - 20, 140);
+      
+      // Help button
+      fill(100, 100, 200);
+      rect(width - 50, 170, 30, 30, 5);
+      fill(255);
+      textAlign(CENTER, CENTER);
+      textSize(20);
+      text("?", width - 35, 185);
+      
+      // Show help overlay if requested
+      if (showHelp) {
+        // Semi-transparent background
+        fill(0, 0, 0, 180);
+        rect(0, 0, width, height);
+        
+        // Help content
+        fill(255);
+        textAlign(CENTER, CENTER);
+        textSize(30);
+        text("שליטה", width / 2, height / 3 - 80);
+        
+        textSize(20);
+        text("WASD: תנועה", width / 2, height / 3 - 20);
+        text("עכבר: כיוון", width / 2, height / 3 + 20);
+        text("לחיצת עכבר: זריקת משקולת", width / 2, height / 3 + 60);
+        text("לחיצה על כפתור ?: עזרה", width / 2, height / 3 + 100);
+        
+        // Add powerup information to help screen
+        textSize(24);
+        text("פאוור-אפים", width / 2, height / 3 + 150);
+        
+        textSize(16);
+        text("זריקה של תוספים ירוקה: הגברת מהירות", width / 2, height / 3 + 180);
+        text("זריקה של תוספים אדומה: חסינות זמנית", width / 2, height / 3 + 200);
+        text("זריקה של תוספים כחולה: +5 משקולות", width / 2, height / 3 + 220);
+        text("חטיף/שייק חלבון: +1 חיים", width / 2, height / 3 + 240);
+        
+        textSize(16);
+        text("לחץ בכל מקום לסגירה", width / 2, height * 0.9);
+      }
+      
+      // Message display
+      if (messageTimer > 0) {
+        fill(0, 0, 0, 200);
+        rect(width / 2 - 150, height - 100, 300, 50, 10);
+        
+        fill(255);
+        textAlign(CENTER, CENTER);
+        textSize(16);
+        text(message, width / 2, height - 75);
+      }
+    }
+    
+    // UPDATED: Function to draw the status panel at the top of the screen with RTL layout
+    function drawStatusPanel() {
+      // Draw panel background - make it wider to prevent overlap
+      fill(40, 40, 60, 180);
+      rect(width/2 - 200, 10, 400, 80, 10);
+      
+      // Panel title
+      fill(255);
+      textAlign(CENTER, TOP);
+      textSize(16);
+      text("סטטוס", width/2, 15);
+      
+      // Key status - RTL layout - moved further right
+      fill(255);
+      textSize(14);
+      textAlign(RIGHT, CENTER);
+      text("מפתח:", width/2 + 180, 40);
+      
+      if (trainer.hasKey) {
+        fill(255, 255, 0);
+        ellipse(width/2 + 140, 40, 15, 15);
+        fill(255);
+        textAlign(RIGHT, CENTER);
+        text("נמצא", width/2 + 135, 40);
+      } else {
+        fill(100);
+        ellipse(width/2 + 140, 40, 15, 15);
+        fill(255);
+        textAlign(RIGHT, CENTER);
+        text("חסר", width/2 + 135, 40);
+      }
+      
+      // Active powerups - RTL layout
+      fill(255);
+      textSize(14);
+      textAlign(RIGHT, CENTER);
+      text("פאוור-אפים:", width/2 + 180, 65);
+      
+      let powerupX = width/2 + 120;
+      
+      // Speed boost
+      if (trainer.speed > 5) {
+        fill(100, 255, 100);
+        rect(powerupX, 60, 10, 10);
+        fill(255);
+        textAlign(RIGHT, CENTER);
+        text("מהירות", powerupX - 5, 65);
+        powerupX -= 70;
+      }
+      
+      // Invulnerability
+      if (isInvulnerable) {
+        fill(255, 100, 100);
+        rect(powerupX, 60, 10, 10);
+        fill(255);
+        textAlign(RIGHT, CENTER);
+        text("חסינות", powerupX - 5, 65);
+        powerupX -= 70;
+      }
+      
+      // Extra ammo indicator - RTL layout - moved to left side
+      fill(255);
+      textSize(14);
+      textAlign(RIGHT, CENTER);
+      text("תחמושת:", width/2 - 60, 40);
+      
+      if (trainer.plates > 15) {
+        fill(100, 100, 255);
+        textAlign(RIGHT, CENTER);
+        text("מוגבר", width/2 - 65, 40);
+      } else if (trainer.plates > 5) {
+        fill(200, 200, 255);
+        textAlign(RIGHT, CENTER);
+        text("רגיל", width/2 - 65, 40);
+      } else if (trainer.plates > 0) {
+        fill(255, 200, 200);
+        textAlign(RIGHT, CENTER);
+        text("נמוך", width/2 - 65, 40);
+      } else {
+        fill(255, 100, 100);
+        textAlign(RIGHT, CENTER);
+        text("ריק", width/2 - 65, 40);
+      }
+      
+      // Timer for invulnerability if active
+      if (isInvulnerable) {
+        fill(255, 200, 200);
+        let barWidth = (invulnerabilityTimer / 300) * 380; // Adjusted for wider panel
+        rect(width/2 - 190, 80, barWidth, 5);
+      }
+    }
+    
+    function drawSecurityCameras() {
+      for (let i = 0; i < securityCameras.length; i++) {
+        let camera = securityCameras[i];
+        
+        push();
+        translate(camera.x, camera.y);
+        
+        // Camera mount
+        fill(50, 50, 50);
+        ellipse(0, 0, 15, 15);
+        
+        // Camera body
+        rotate(camera.angle * PI / 180);
+        fill(70, 70, 70);
+        rect(-5, -5, 15, 10, 2);
+        
+        // Camera lens
+        fill(20, 20, 20);
+        ellipse(5, 0, 8, 8);
+        
+        // Camera light - red when active, blinking when spotted player
+        if (cameraFlashTimer > 0 && sqrt((camera.x - trainer.x) * (camera.x - trainer.x) + 
+                                         (camera.y - trainer.y) * (camera.y - trainer.y)) < 250) {
+          // Blinking light when camera is taking a picture
+          if (frameCount % 4 < 2) {
+            fill(255, 255, 0);
+            ellipse(5, -5, 6, 6);
+          }
+        } else {
+          fill(255, 0, 0);
+          ellipse(5, -5, 4, 4);
+        }
+        
+        // Field of view indicator - make it less intense
+        noFill();
+        stroke(255, 0, 0, 30);
+        strokeWeight(1);
+        arc(0, 0, 200, 200, -PI/6, PI/6);
+        
+        pop();
+      }
+      
+      // Ensure no stroke is active after drawing cameras
+      noStroke();
+    }
+    
+    function displayMessage(msg) {
+      // Translate common messages to Hebrew
+      if (msg === "A husband spotted you!") {
+        message = "!בעל זיהה אותך";
+      } else if (msg === "Got 5 more plates for my arsenal!") {
+        message = "!קיבלת עוד 5 משקולות";
+      } else if (msg === "Got the key! Time to escape!") {
+        message = "!מצאת את המפתח! זמן לברוח";
+      } else if (msg === "Ouch! That hurt!") {
+        message = "!אוי! זה כאב";
+      } else if (msg === "Take that!") {
+        message = "!קח את זה";
+      } else if (msg === "Eat this, jealous husband!") {
+        message = "!תאכל את זה, בעל קנאי";
+      } else if (msg === "That one dropped a key!") {
+        message = "!זה הפיל מפתח";
+      } else if (msg === "Steroid injection! Speed increased!") {
+        message = "!זריקה של תוספים! המהירות גדלה";
+      } else if (msg === "Adrenaline shot! Temporary invulnerability!") {
+        message = "!זריקה של תוספים! חסינות זמנית";
+      } else if (msg === "Testosterone boost! +5 weight plates!") {
+        message = "!זריקה של תוספים! +5 משקולות";
+      } else if (msg === "Protein bar! +1 life!") {
+        message = "!חטיף חלבון! +1 חיים";
+      } else if (msg === "Protein shake! +1 life!") {
+        message = "!שייק חלבון! +1 חיים";
+      } else if (msg === "The husbands are coordinating!") {
+        message = "!הבעלים מתאמים ביניהם";
+      } else if (msg === "Adios, Yavne! Hello, Mexico!") {
+        message = "!אדיוס יבנה! הולה מקסיקו";
+      } else {
+        message = msg;
+      }
+      
+      messageTimer = 120;
+    }
+    
+    function mousePressed() {
+      // Check if we need to start the game
+      if (gameState === MAIN_MENU) {
+        if (mouseX > width / 2 - 100 && mouseX < width / 2 + 100 &&
+            mouseY > 430 && mouseY < 490) {
+          gameState = GAMEPLAY;
+          resetGame();
+          return;
+        }
+      }
+      
+      // Check if we need to restart after game over
+      if (gameState === GAME_OVER) {
+        if (mouseX > width / 2 - 100 && mouseX < width / 2 + 100 &&
+            mouseY > height / 2 + 80 && mouseY < height / 2 + 140) {
+          gameState = GAMEPLAY;
+          resetGame();
+          return;
+        }
+      }
+      
+      // Check if we need to restart after victory
+      if (gameState === VICTORY) {
+        if (mouseX > width / 2 - 100 && mouseX < width / 2 + 100 &&
+            mouseY > height * 0.8 && mouseY < height * 0.8 + 60) {
+          gameState = GAMEPLAY;
+          resetGame();
+          return;
+        }
+      }
+      
+      // Check if help button was clicked during gameplay
+      if (gameState === GAMEPLAY) {
+        if (mouseX > width - 50 && mouseX < width - 20 &&
+            mouseY > 170 && mouseY < 200) {
+          showHelp = !showHelp;
+        } else if (showHelp) {
+          // Close help if clicking anywhere else
+          showHelp = false;
+        } else if (trainer.plates > 0) {
+          // Throw plate with mouse click
+          throwPlate();
+        }
+      }
+    }
+    
+    function throwPlate() {
+      // Create a new thrown plate
+      thrownPlates.push({
+        x: trainer.x,
+        y: trainer.y,
+        vx: trainer.lastDirection.x * 8,
+        vy: trainer.lastDirection.y * 8,
+        size: 20
+      });
+      
+      // Reduce plates
+      trainer.plates--;
+      
+      // Display message
+      displayMessage("Take that!");
+    }
+    
+    function keyPressed() {
+      // Change aiming direction with WASD keys - removed as we now use mouse
+      // Spacebar can still throw plates as an alternative to mouse click
+      if (keyCode === 32 && gameState === GAMEPLAY && trainer.plates > 0) {
+        throwPlate();
+      }
+    }
+    
+    function drawPowerups() {
+      for (let i = 0; i < powerups.length; i++) {
+        if (!powerups[i].collected) {
+          push();
+          translate(powerups[i].x, powerups[i].y);
+          rotate(powerups[i].rotation);
+          
+          // Draw syringe based on type
+          switch (powerups[i].type) {
+            case "protein":
+              // Green steroid syringe
+              // Syringe body
+              fill(200, 255, 200);
+              rect(-10 * powerups[i].pulseSize, -3 * powerups[i].pulseSize, 20 * powerups[i].pulseSize, 6 * powerups[i].pulseSize, 1);
+              
+              // Syringe liquid
+              fill(100, 255, 100);
+              rect(-8 * powerups[i].pulseSize, -2 * powerups[i].pulseSize, 12 * powerups[i].pulseSize, 4 * powerups[i].pulseSize);
+              
+              // Syringe plunger
+              fill(220);
+              rect(4 * powerups[i].pulseSize, -4 * powerups[i].pulseSize, 8 * powerups[i].pulseSize, 8 * powerups[i].pulseSize, 1);
+              
+              // Needle
+              fill(200);
+              rect(-15 * powerups[i].pulseSize, -1 * powerups[i].pulseSize, 5 * powerups[i].pulseSize, 2 * powerups[i].pulseSize);
+              break;
+              
+            case "preworkout":
+              // Red steroid syringe
+              // Syringe body
+              fill(255, 200, 200);
+              rect(-10 * powerups[i].pulseSize, -3 * powerups[i].pulseSize, 20 * powerups[i].pulseSize, 6 * powerups[i].pulseSize, 1);
+              
+              // Syringe liquid
+              fill(255, 100, 100);
+              rect(-8 * powerups[i].pulseSize, -2 * powerups[i].pulseSize, 12 * powerups[i].pulseSize, 4 * powerups[i].pulseSize);
+              
+              // Syringe plunger
+              fill(220);
+              rect(4 * powerups[i].pulseSize, -4 * powerups[i].pulseSize, 8 * powerups[i].pulseSize, 8 * powerups[i].pulseSize, 1);
+              
+              // Needle
+              fill(200);
+              rect(-15 * powerups[i].pulseSize, -1 * powerups[i].pulseSize, 5 * powerups[i].pulseSize, 2 * powerups[i].pulseSize);
+              break;
+              
+            case "creatine":
+              // Blue steroid syringe
+              // Syringe body
+              fill(200, 200, 255);
+              rect(-10 * powerups[i].pulseSize, -3 * powerups[i].pulseSize, 20 * powerups[i].pulseSize, 6 * powerups[i].pulseSize, 1);
+              
+              // Syringe liquid
+              fill(100, 100, 255);
+              rect(-8 * powerups[i].pulseSize, -2 * powerups[i].pulseSize, 12 * powerups[i].pulseSize, 4 * powerups[i].pulseSize);
+              
+              // Syringe plunger
+              fill(220);
+              rect(4 * powerups[i].pulseSize, -4 * powerups[i].pulseSize, 8 * powerups[i].pulseSize, 8 * powerups[i].pulseSize, 1);
+              
+              // Needle
+              fill(200);
+              rect(-15 * powerups[i].pulseSize, -1 * powerups[i].pulseSize, 5 * powerups[i].pulseSize, 2 * powerups[i].pulseSize);
+              break;
+          }
+          
+          pop();
+        }
+      }
+    }
+    
+    function drawProteinBars() {
+      for (let i = 0; i < proteinBars.length; i++) {
+        if (!proteinBars[i].collected) {
+          push();
+          
+          if (proteinBars[i].type === "bar") {
+            // Protein bar
+            // Wrapper
+            fill(150, 100, 50);
+            rect(proteinBars[i].x - proteinBars[i].width/2 * proteinBars[i].pulseSize, 
+                 proteinBars[i].y - proteinBars[i].height/2 * proteinBars[i].pulseSize, 
+                 proteinBars[i].width * proteinBars[i].pulseSize, 
+                 proteinBars[i].height * proteinBars[i].pulseSize, 3);
+            
+            // Label
+            fill(200, 150, 50);
+            rect(proteinBars[i].x - proteinBars[i].width/2 * proteinBars[i].pulseSize + 2, 
+                 proteinBars[i].y - proteinBars[i].height/2 * proteinBars[i].pulseSize + 2, 
+                 proteinBars[i].width * proteinBars[i].pulseSize - 4, 
+                 proteinBars[i].height * proteinBars[i].pulseSize - 4, 2);
+            
+            // Protein text
+            fill(50, 30, 0);
+            textSize(6 * proteinBars[i].pulseSize);
+            textAlign(CENTER, CENTER);
+            text("PROTEIN", proteinBars[i].x, proteinBars[i].y);
+          } else {
+            // Protein shake
+            // Bottle
+            fill(220);
+            rect(proteinBars[i].x - 8 * proteinBars[i].pulseSize, 
+                 proteinBars[i].y - 12 * proteinBars[i].pulseSize, 
+                 16 * proteinBars[i].pulseSize, 
+                 24 * proteinBars[i].pulseSize, 3);
+            
+            // Liquid
+            fill(200, 180, 120);
+            rect(proteinBars[i].x - 6 * proteinBars[i].pulseSize, 
+                 proteinBars[i].y - 10 * proteinBars[i].pulseSize, 
+                 12 * proteinBars[i].pulseSize, 
+                 18 * proteinBars[i].pulseSize);
+            
+            // Cap
+            fill(50, 50, 50);
+            rect(proteinBars[i].x - 5 * proteinBars[i].pulseSize, 
+                 proteinBars[i].y - 15 * proteinBars[i].pulseSize, 
+                 10 * proteinBars[i].pulseSize, 
+                 3 * proteinBars[i].pulseSize, 1);
+          }
+          
+          pop();
+        }
+      }
+    }
+  </script>
+</body>
+</html>
